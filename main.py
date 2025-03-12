@@ -14,17 +14,21 @@ data.dropna(inplace=True)
 confidence_level = 0.95
 
 # Calculate 1-day 95% VaR and ES (Historical Method)
-VaR = -data['log_return'].quantile(1 - confidence_level)
-ES = -data['log_return'][data['log_return'] <= -VaR].mean()
+VaR = data['log_return'].quantile(1 - confidence_level)  # No need for negative sign
+ES = data['log_return'][data['log_return'] <= VaR].mean()  # Use VaR directly
 
 # Assume an investment amount
 investment = 100000
 
 # Convert to monetary values
-VaR_money = VaR * investment
-ES_money = ES * investment
+VaR_money = abs(VaR) * investment
+ES_money = abs(ES) * investment
 
-# Print results
+# Print results with better formatting
+print("=" * 50)
 print(f"Stock: {ticker}")
-print(f"1-Day 95% VaR: {VaR:.2%} (₹{VaR_money:,.2f})")
-print(f"1-Day 95% Expected Shortfall (ES): {ES:.2%} (₹{ES_money:,.2f})")
+print(f"Confidence Level: {confidence_level:.0%}")
+print("-" * 50)
+print(f"1-Day 95% VaR: {VaR:.4%} (₹{VaR_money:,.2f})")
+print(f"1-Day 95% Expected Shortfall (ES): {ES:.4%} (₹{ES_money:,.2f})")
+print("=" * 50)
