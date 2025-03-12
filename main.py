@@ -2,33 +2,42 @@ import pandas as pd
 import numpy as np
 import yfinance as yf
 
-# Fetch data
-ticker = "RELIANCE.NS"
-data = yf.download(ticker, start="2023-01-01", end="2025-01-01")[['Close']]
+def calculate_var_es(ticker, start_date, end_date, confidence_level=0.95, investment=100000):
+    
+    # Fetch data
+    data = yf.download(ticker, start=start_date, end=end_date)[['Close']]
+    
+    # Compute log returns
+    data['log_return'] = np.log(data['Close'] / data['Close'].shift(1))
+    data.dropna(inplace=True)
 
-# Compute log returns
-data['log_return'] = np.log(data['Close'] / data['Close'].shift(1))
-data.dropna(inplace=True)
+    # Compute 1-day 95% VaR and ES
+    VaR = data['log_return'].quantile(1 - confidence_level)
+    ES = data['log_return'][data['log_return'] <= VaR].mean()
 
-# Confidence level
-confidence_level = 0.95
+    # INR value
+    VaR_money = abs(VaR) * investment
+    ES_money = abs(ES) * investment if not np.isnan(ES) else 0  # Avoid NaN issue
 
-# Calculate 1-day 95% VaR and ES
-VaR = data['log_return'].quantile(1 - confidence_level)
-ES = data['log_return'][data['log_return'] <= VaR].mean()
+    return VaR, ES, VaR_money, ES_money
 
-# investment amount
-investment = 100000
 
-# Inr value
-VaR_money = abs(VaR) * investment
-ES_money = abs(ES) * investment
+if __name__ == "__main__":
+    #parameters
+    ticker = "RELIANCE.NS"
+    start_date = "2023-01-01"
+    end_date = "2025-01-01"
+    confidence_level = 0.95
+    investment = 100000
 
-# result print
-print("=" * 50)
-print(f"Stock: {ticker}")
-print(f"Confidence Level: {confidence_level:.0%}")
-print("-" * 50)
-print(f"1-Day 95% VaR: {VaR:.4%} (₹{VaR_money:,.2f})")
-print(f"1-Day 95% Expected Shortfall (ES): {ES:.4%} (₹{ES_money:,.2f})")
-print("=" * 50)
+    # function calling
+    VaR, ES, VaR_money, ES_money = calculate_var_es(ticker, start_date, end_date, confidence_level, investment)
+
+    # Print results with formatting
+    print("=" * 50)
+    print(f"Stock: {ticker}")
+    print(f"Confidence Level: {confidence_level:.0%}")
+    print("-" * 50)
+    print(f"1-Day 95% VaR: {VaR:.2%} (₹{VaR_money:,.2f})")
+    print(f"1-Day 95% Expected Shortfall (ES): {ES:.2%} (₹{ES_money:,.2f})")
+    print("=" * 50)
