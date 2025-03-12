@@ -13,18 +13,18 @@ data.dropna(inplace=True)
 # Confidence level
 confidence_level = 0.95
 
-# Calculate 1-day 95% VaR and ES (Historical Method)
+# Calculate 1-day 95% VaR and ES
 VaR = data['log_return'].quantile(1 - confidence_level)
 ES = data['log_return'][data['log_return'] <= VaR].mean()
 
-# Assume an investment amount
+# investment amount
 investment = 100000
 
-# Convert to monetary values
+# Inr value
 VaR_money = abs(VaR) * investment
 ES_money = abs(ES) * investment
 
-# Print results with better formatting
+# result print
 print("=" * 50)
 print(f"Stock: {ticker}")
 print(f"Confidence Level: {confidence_level:.0%}")
