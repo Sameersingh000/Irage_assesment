@@ -14,8 +14,8 @@ data.dropna(inplace=True)
 confidence_level = 0.95
 
 # Calculate 1-day 95% VaR and ES (Historical Method)
-VaR = data['log_return'].quantile(1 - confidence_level)  # No need for negative sign
-ES = data['log_return'][data['log_return'] <= VaR].mean()  # Use VaR directly
+VaR = data['log_return'].quantile(1 - confidence_level)
+ES = data['log_return'][data['log_return'] <= VaR].mean()
 
 # Assume an investment amount
 investment = 100000
