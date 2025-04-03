@@ -1,43 +1,53 @@
-import pandas as pd
 import numpy as np
-import yfinance as yf
+import matplotlib.pyplot as plt
 
-def calculate_var_es(ticker, start_date, end_date, confidence_level=0.95, investment=100000):
-    
-    # Fetch data
-    data = yf.download(ticker, start=start_date, end=end_date)[['Close']]
-    
-    # Compute log returns
-    data['log_return'] = np.log(data['Close'] / data['Close'].shift(1))
-    data.dropna(inplace=True)
+# Define simulation parameters
+trading_days = 252  # number of trading days in a year
+t = np.linspace(0, trading_days, trading_days)
 
-    # Compute 1-day 95% VaR and ES
-    VaR = data['log_return'].quantile(1 - confidence_level)
-    ES = data['log_return'][data['log_return'] <= VaR].mean()
+# Given CAGR values (as multipliers over one year)
+# Mean Reversion: 1096.59% => final multiplier ≈ 11.9659
+# Directional: 1748.69% => final multiplier ≈ 18.4869
+# Semi-Directional: 1423.85% => final multiplier ≈ 15.2385
 
-    # INR value
-    VaR_money = abs(VaR) * investment
-    ES_money = abs(ES) * investment if not np.isnan(ES) else 0  # Avoid NaN issue
+# Calculate daily drift using: drift = exp(log(final_multiplier)/trading_days)-1
+drift_mean_rev = np.exp(np.log(11.9659)/trading_days) - 1
+drift_directional = np.exp(np.log(18.4869)/trading_days) - 1
+drift_semi = np.exp(np.log(15.2385)/trading_days) - 1
 
-    return VaR, ES, VaR_money, ES_money
+# Assume some volatility (estimated) for simulation
+vol_mean_rev = 0.02  # 2% daily volatility
+vol_directional = 0.03
+vol_semi = 0.025
 
+# Seed for reproducibility
+np.random.seed(42)
 
-if __name__ == "__main__":
-    #parameters
-    ticker = "RELIANCE.NS"
-    start_date = "2023-01-01"
-    end_date = "2025-01-01"
-    confidence_level = 0.95
-    investment = 100000
+# Generate synthetic daily returns using geometric Brownian motion
+def generate_equity_curve(drift, vol, days):
+    # Generate daily returns
+    daily_returns = drift + vol * np.random.randn(days)
+    # Start at 1 and take cumulative product to simulate equity growth
+    equity = np.cumprod(1 + daily_returns)
+    return equity
 
-    # function calling
-    VaR, ES, VaR_money, ES_money = calculate_var_es(ticker, start_date, end_date, confidence_level, investment)
+equity_mean_rev = generate_equity_curve(drift_mean_rev, vol_mean_rev, trading_days)
+equity_directional = generate_equity_curve(drift_directional, vol_directional, trading_days)
+equity_semi = generate_equity_curve(drift_semi, vol_semi, trading_days)
 
-    # Print results with formatting
-    print("=" * 50)
-    print(f"Stock: {ticker}")
-    print(f"Confidence Level: {confidence_level:.0%}")
-    print("-" * 50)
-    print(f"1-Day 95% VaR: {VaR:.2%} (₹{VaR_money:,.2f})")
-    print(f"1-Day 95% Expected Shortfall (ES): {ES:.2%} (₹{ES_money:,.2f})")
-    print("=" * 50)
+# Combined portfolio as an equally weighted average of the three strategies
+combined_equity = (equity_mean_rev + equity_directional + equity_semi) / 3
+
+# Plot individual equity curves and the combined portfolio curve
+plt.figure(figsize=(12, 6))
+plt.plot(t, equity_mean_rev, label="Mean Reversion Strategy", linestyle="--", alpha=0.7)
+plt.plot(t, equity_directional, label="Directional Strategy", linestyle="--", alpha=0.7)
+plt.plot(t, equity_semi, label="Semi-Directional Strategy", linestyle="--", alpha=0.7)
+plt.plot(t, combined_equity, label="Combined Portfolio", linewidth=2, color='black')
+
+plt.xlabel("Trading Days")
+plt.ylabel("Normalized Equity Value")
+plt.title("Combined Portfolio Equity Curve")
+plt.legend()
+plt.grid(True)
+plt.show()

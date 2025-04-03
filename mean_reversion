@@ -1,0 +1,109 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Load data
+df = pd.read_csv('nifty_options_realistic.csv')
+
+# Enhanced date parsing function
+def parse_dates(col):
+    if col.dtype == 'object':
+        col = col.str.replace(r'\.0$', '', regex=True)
+        col = col.str.replace(r'^(\d{1,2})/(\d{1,2})/(\d{4})$', r'\1-\2-\3', regex=True)
+    for fmt in ("%d-%m-%Y", "%m-%d-%Y", "%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y"):
+        try:
+            return pd.to_datetime(col, format=fmt, errors="raise")
+        except:
+            continue
+    return pd.to_datetime(col, errors="coerce")
+
+# Convert date columns with robust parsing
+df['EXPIRY_DT'] = parse_dates(df['EXPIRY_DT'])
+df['TIMESTAMP'] = parse_dates(df['TIMESTAMP'])
+
+# Sort data by expiry, strike price, and timestamp
+df = df.sort_values(['EXPIRY_DT', 'STRIKE_PR', 'TIMESTAMP'])
+
+# Calculate Bollinger Bands
+df['MA20'] = df['CLOSE'].rolling(window=20, min_periods=1).mean()
+df['UpperBand'] = df['MA20'] + 2 * df['CLOSE'].rolling(window=20, min_periods=1).std()
+df['LowerBand'] = df['MA20'] - 2 * df['CLOSE'].rolling(window=20, min_periods=1).std()
+
+# Generate Mean Reversion signals
+df['Signal_MR'] = np.where(df['CLOSE'] > df['UpperBand'], 'Sell Call', 
+                          np.where(df['CLOSE'] < df['LowerBand'], 'Sell Put', 'Hold'))
+
+# Backtesting Logic
+initial_capital = 100000
+position_size = 1
+slippage = 0.001
+transaction_cost = 20
+
+def backtest(df, signal_column):
+    trades = []
+    position = None
+    capital = initial_capital
+    capital_history = [capital]
+    timestamps = [df['TIMESTAMP'].iloc[0]]
+    
+    for i, row in df.iterrows():
+        current_time = row['TIMESTAMP']
+        current_capital = capital_history[-1]
+        signal = row[signal_column]
+        
+        if signal == 'Sell Call' and position is None:
+            entry_price = row['CLOSE']
+            position = {'type': 'CE', 'entry': entry_price, 'time': current_time}
+        elif signal == 'Sell Put' and position is None:
+            entry_price = row['CLOSE']
+            position = {'type': 'PE', 'entry': entry_price, 'time': current_time}
+        
+        if position:
+            if current_time.hour == 15 or (
+                (position['type'] == 'CE' and row['CLOSE'] <= row['MA20']) or 
+                (position['type'] == 'PE' and row['CLOSE'] >= row['MA20'])
+            ):
+                exit_price = row['CLOSE']
+                pnl = (position['entry'] - exit_price) * position_size * (1 - slippage)
+                pnl -= transaction_cost
+                current_capital += pnl
+                trades.append({'PnL': pnl, 'Duration': (current_time - position['time']).seconds / 60})
+                position = None
+        
+        if current_time != timestamps[-1]:
+            capital_history.append(current_capital)
+            timestamps.append(current_time)
+    
+    return pd.DataFrame(trades), current_capital, capital_history, timestamps
+
+# Run backtest for Mean Reversion Strategy
+trades_mr, final_capital_mr, capital_history_mr, timestamps_mr = backtest(df, 'Signal_MR')
+
+# Plot Capital vs Number of Trades
+plt.figure(figsize=(12, 6))
+plt.plot(range(len(capital_history_mr)), capital_history_mr, label='Capital Over Trades', color='blue')
+plt.axhline(y=initial_capital, color='black', linestyle='--', linewidth=1, label='Initial Capital')
+plt.xlabel('Number of Trades')
+plt.ylabel('Portfolio Value (₹)')
+plt.title('Capital vs Number of Trades')
+plt.legend()
+plt.grid(True, linestyle='--', alpha=0.7)
+plt.show()
+
+# Compute performance metrics
+def compute_metrics(trades, final_capital, initial_capital):
+    years = len(df['TIMESTAMP'].dt.year.unique()) if len(df['TIMESTAMP'].dt.year.unique()) > 0 else 1
+    total_pnl = trades['PnL'].sum()
+    cagr = (final_capital / initial_capital) ** (1 / years) - 1
+    mdd = (trades['PnL'].cumsum().cummax() - trades['PnL'].cumsum()).max()
+    sharpe = trades['PnL'].mean() / trades['PnL'].std() * np.sqrt(252) if trades['PnL'].std() != 0 else 0
+    win_rate = len(trades[trades['PnL'] > 0]) / len(trades) if len(trades) > 0 else 0
+    avg_pnl = trades['PnL'].mean()
+    return cagr, mdd, sharpe, win_rate, avg_pnl
+
+# Compute metrics for Mean Reversion Strategy
+metrics_mr = compute_metrics(trades_mr, final_capital_mr, initial_capital)
+
+# Print results for Mean Reversion Strategy
+print(f"\n=== STRATEGY RESULTS ===")
+print(f"Mean Reversion Strategy - CAGR: {metrics_mr[0]:.2%}, MDD: ₹{metrics_mr[1]:.2f}, Sharpe: {metrics_mr[2]:.2f}, Win Rate: {metrics_mr[3]:.2%}, Avg PnL: ₹{metrics_mr[4]:.2f}")
